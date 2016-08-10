@@ -1,7 +1,7 @@
 {
     "name": "gbv/orcid-jskos",
     "description": "JSKOS wrapper to the public ORCID API",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "type": "project",
     "require": {
         "gbv/jskos": "^0.0.12",

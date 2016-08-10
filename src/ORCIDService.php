@@ -4,15 +4,24 @@
  * JSKOS-API Wrapper to ORCID.
  */
 
-include 'LuceneTrait.php';
-
 use JSKOS\Service;
 use JSKOS\Concept;
 use JSKOS\Page;
 use JSKOS\URISpaceService;
 
+/**
+ * Escape special characters used in Lucene Query Parser Syntax.
+ */
+function luceneQuery($field, $query) {
+    $query = preg_replace(
+        '/([*+&|!(){}\[\]^"~*?:\\-])/',
+        '\\\\$1',
+        $query 
+    );
+    return "$field:\"$query\"";
+}
+
 class ORCIDService extends Service {
-    use LuceneTrait;
 
     protected $supportedParameters = ['notation','search'];
 
@@ -113,7 +122,7 @@ class ORCIDService extends Service {
                 'Content-Type' => 'application/orcid+json'
             ],
             # TODO: search in names only and use boosting
-            [ 'q' => LuceneTrait::luceneQuery('text',$query) ]
+            [ 'q' => luceneQuery('text',$query) ]
         );
 
         if ($response->code == 200) {
