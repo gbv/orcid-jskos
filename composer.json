@@ -1,0 +1,23 @@
+{
+    "name": "gbv/orcid-jskos",
+    "description": "JSKOS wrapper to the public ORCID API",
+    "version": "0.1.0",
+    "type": "project",
+    "require": {
+        "gbv/jskos": "^0.0.12",
+        "mashape/unirest-php": "^3.0"
+    },
+    "license": "AGPL",
+    "authors": [
+        {
+            "name": "Jakob Voss",
+            "email": "voss@gbv.de"
+        }
+    ],
+    "keywords": [ "ORCID", "JSKOS" ],
+    "autoload": {
+        "psr-4": {
+            "": "src"
+        }
+    }
+}
