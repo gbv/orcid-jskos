@@ -1,4 +1,4 @@
-<?php
+<?php declare(strict_types=1);
 
 /**
  * JSKOS-API Wrapper to ORCID.
@@ -6,8 +6,12 @@
 
 use JSKOS\Service;
 use JSKOS\Concept;
-use JSKOS\Page;
+use JSKOS\Result;
 use JSKOS\URISpaceService;
+
+use Http\Client\HttpClient;
+use Http\Discovery\HttpClientDiscovery;
+use Http\Discovery\MessageFactoryDiscovery;
 
 /**
  * Escape special characters used in Lucene Query Parser Syntax.
@@ -16,7 +20,7 @@ function luceneQuery($field, $query) {
     $query = preg_replace(
         '/([*+&|!(){}\[\]^"~*?:\\-])/',
         '\\\\$1',
-        $query 
+        $query
     );
     return "$field:\"$query\"";
 }
@@ -30,6 +34,9 @@ class ORCIDService extends Service {
     private $client_id;
     private $client_secret;
 
+	protected $httpClient;
+    protected $requestFactory;
+
     public function __construct($client_id, $client_secret) {
         $this->uriSpaceService = new URISpaceService([
             'Concept' => [
@@ -39,78 +46,94 @@ class ORCIDService extends Service {
         ]);
         $this->client_id     = $client_id;
         $this->client_secret = $client_secret;
-        parent::__construct();
+		$this->requestFactory = MessageFactoryDiscovery::find();
+		$this->httpClient = HttpClientDiscovery::find();
     }
 
     // Get an OAuth access token
     protected function getOAuthToken() {
         # TODO: use session to store the token
         if ($this->client_id and $this->client_secret) {
-            $body = Unirest\Request\Body::form(
-                [ 
-                  'client_id' => $this->client_id, 
+            $response = $this->httpQuery(
+                'POST', 'https://orcid.org/oauth/token',
+                [
+                    'Accept' => 'application/json',
+                    'Content-Type' => 'application/x-www-form-urlencoded'
+                ],
+                http_build_query([
+                  'client_id' => $this->client_id,
                   'client_secret' => $this->client_secret,
                   'scope' => '/read-public',
                   'grant_type' => 'client_credentials',
-                ]
+                ])
             );
-            $response = Unirest\Request::post(
-                'https://orcid.org/oauth/token', 
-                [ 'Accept' => 'application/json' ],
-                $body
-            );
-            if ($response->code == 200) {
-                return $response->body->{'access_token'};
+
+            if ($response) {
+                return $response->{'access_token'};
             }
+        }
+    }
+
+    protected function httpQuery($method, $url, $header, $body=null) {
+        $request = $this->requestFactory->createRequest($method, $url, $header, $body);
+        $response = $this->httpClient->sendRequest($request);
+
+        if ($response->getStatusCode() == 200) {
+            return json_decode((string)$response->getBody());
         }
     }
 
     // main method
-    public function query($request) {
+    public function query(array $query, string $path=''): Result {
 
         // search for ORCID profiles
-        if (isset($request['search'])) {
-            $result = $this->searchProfiles($request['search']);
-            if ($result) {
+        if (isset($query['search'])) {
+            $response = $this->searchProfiles($query['search']);
+            if ($response) {
                 $concepts = [];
-                foreach ($result->{'orcid-search-result'} as $bio) {
+                foreach ($response->{'orcid-search-response'} as $bio) {
                     $concepts[] = $this->mapProfile($bio->{'orcid-profile'});
                 }
-                return new Page($concepts,0,1,$result->{'num-found'});
+
+                // TODO: set totalCount to $response->{'num-found'}
+                return new Result($concepts);
             }
         }
 
         // get ORCID profile by ORCID ID or ORCID URI
-        $jskos = $this->uriSpaceService->query($request);
-        if ($jskos && $jskos->notation[0]) {
-            $profile = $this->getProfile($jskos->notation[0]);
+        $result = $this->uriSpaceService->query($query);
+
+        if (count($result) && $result[0]->notation[0]) {
+            $profile = $this->getProfile($result[0]->notation[0]);
             $jskos = $this->mapProfile($profile);
-            return $jskos;
+            $result = new Result($jskos ? [ $jskos ] : []);
         }
 
+        return $result;
     }
 
     // get an indentified profile by ORCID ID
     protected function getProfile( $id )
-    { 
+    {
         $token = $this->getOAuthToken();
         if (!$token) return;
 
-        $response = Unirest\Request::get(
+        $response = $this->httpQuery(
+            'GET',
             "https://pub.orcid.org/v1.2/$id/orcid-bio/",
             [
                 'Authorization' => "Bearer $token",
-                'Content-Type' => 'application/orcid+json'
+                'Accept' => 'application/json',
             ]
         );
 
-        if ($response->code == 200) {
-            return $response->body->{'orcid-profile'};
+        if ($response) {
+            return $response->{'orcid-profile'};
         }
     }
 
     // search for an ORCID profile
-    protected function searchProfiles( $query ) 
+    protected function searchProfiles( $query )
     {
         $token = $this->getOAuthToken();
         if (!$token) return;
@@ -207,7 +230,7 @@ class ORCIDService extends Service {
                 // often wrongly split by comma
                 foreach (preg_split('/,\s*/', $keywords->value) as $keyword) {
                     $jskos->subject[] = new Concept([
-                        "prefLabel" => [ "en" => $keyword ] 
+                        "prefLabel" => [ "en" => $keyword ]
                     ]);
                 }
             }
@@ -218,7 +241,4 @@ class ORCIDService extends Service {
 
         return $jskos;
     }
-
 }
-
-

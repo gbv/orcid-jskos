@@ -39,6 +39,10 @@ See [jskos-php-examples](https://github.com/gbv/jskos-php-examples/) for an exam
 
 ## Local webservice for testing
 
+To use as server you also need an implementation of `Http\Message\ResponseFactory`, e.g. 
+
+    $ composer require php-http/guzzle6-adapter
+
 Locally run the application on port 8080 as following:
 
     $ composer install
